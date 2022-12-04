@@ -6,15 +6,17 @@ module Solutions.Day4
 import           Common.AoCSolutions (AoCSolution (MkAoCSolution),
                                       printSolutions, printTestSolutions)
 import           Data.List           (intersect)
+import qualified Data.Set as S
 import           Text.Trifecta       (CharParsing (char), Parser, charLiteral,
                                       commaSep, integer, some)
+import qualified Data.Semigroup as S
 type Range = (Integer, Integer)
 data ElfPair
   = MkElfPair
       { elf1 :: !Range
       , elf2 :: !Range
       }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 aoc4 :: IO ()
 aoc4 = do
@@ -47,4 +49,6 @@ isRedundant :: ElfPair -> Bool
 isRedundant MkElfPair{..} = elf1 `contains` elf2 || elf2 `contains` elf1
 
 overlaps :: ElfPair -> Bool
-overlaps (MkElfPair (l1, u1) (l2, u2)) = not $ null $ [l1..u1] `intersect` [l2..u2]
+overlaps ep@(MkElfPair (l1, u1) (l2, u2)) = (l1 >= l2 && l1 <= u2)
+                                            || (u1 <= u2 && u1 >= l2)
+                                            || isRedundant ep
