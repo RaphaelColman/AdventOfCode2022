@@ -1,21 +1,50 @@
+{-# LANGUAGE RecordWildCards #-}
 module Solutions.Day4
-  ( aoc4
-  ) where
+    ( aoc4
+    ) where
 
 import           Common.AoCSolutions (AoCSolution (MkAoCSolution),
-                                      printSolutions)
-import           Text.Trifecta       (Parser)
+                                      printSolutions, printTestSolutions)
+import           Data.List           (intersect)
+import           Text.Trifecta       (CharParsing (char), Parser, charLiteral,
+                                      commaSep, integer, some)
+type Range = (Integer, Integer)
+data ElfPair
+  = MkElfPair
+      { elf1 :: !Range
+      , elf2 :: !Range
+      }
+  deriving (Eq, Show)
 
 aoc4 :: IO ()
 aoc4 = do
   printSolutions 4 $ MkAoCSolution parseInput part1
   printSolutions 4 $ MkAoCSolution parseInput part2
 
-parseInput :: Parser String
-parseInput = undefined
+parseInput :: Parser [ElfPair]
+parseInput = some parseElfPair
 
-part1 :: String -> String
-part1 = undefined
+parseElfPair :: Parser ElfPair
+parseElfPair = do
+  [e1, e2] <- commaSep parseElf
+  pure $ MkElfPair e1 e2
+  where parseElf :: Parser (Integer, Integer)
+        parseElf = do
+          fst <- integer <* char '-'
+          snd <- integer
+          pure (fst, snd)
 
-part2 :: String -> String
-part2 = undefined
+part1 :: [ElfPair] -> Int
+part1 = length . filter isRedundant
+
+part2 :: [ElfPair] -> Int
+part2 = length . filter overlaps
+
+contains :: Range -> Range -> Bool
+contains (l1, u1) (l2, u2) = l1 <= l2 && u1 >= u2
+
+isRedundant :: ElfPair -> Bool
+isRedundant MkElfPair{..} = elf1 `contains` elf2 || elf2 `contains` elf1
+
+overlaps :: ElfPair -> Bool
+overlaps (MkElfPair (l1, u1) (l2, u2)) = not $ null $ [l1..u1] `intersect` [l2..u2]
