@@ -42,6 +42,8 @@ dependencies:
 - parser-combinators
 - parsers
 - regex-tdfa
+- recursion-schemes
+- zippers
 
 library:
   source-dirs: src
