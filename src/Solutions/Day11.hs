@@ -16,24 +16,26 @@ import qualified Data.Foldable             as M
 import           Data.Functor              (($>))
 import qualified Data.IntMap               as IM
 import           Data.List                 (foldl')
+import qualified Data.Ord
 import qualified Data.Sequence             as S
 import           GHC.OldList               (sortOn)
 import           Text.Parser.Combinators   (try)
 import           Text.Trifecta             (CharParsing (anyChar, char, string),
                                             Parser, commaSep, integer, newline,
                                             space, whiteSpace)
-import qualified Data.Ord
 
 aoc11 :: IO ()
 aoc11 = do
   printSolutions 11 $ MkAoCSolution parseInput part1
-  --printSolutions 11 $ MkAoCSolution parseInput part2
+  printSolutions 11 $ MkAoCSolution parseInput part2
 
 data SimianState
   = MkState
-      { _monkeys      :: !(S.Seq Monkey)
-      , _currentIndex :: !Integer
-      , _countedItems :: !(IM.IntMap Integer)
+      { _monkeys          :: !(S.Seq Monkey)
+      , _currentIndex     :: !Integer
+      , _countedItems     :: !(IM.IntMap Integer)
+      , _divideWorryLevel :: !Bool
+      , _roundNumber      :: !Integer
       }
   deriving (Show)
 
@@ -82,43 +84,47 @@ parseExpression = do
     Just n  -> pure (`expr` n)
 
 part1 :: S.Seq Monkey -> Integer
-part1 = solve
+part1 = solve True 20
 
-solve :: S.Seq Monkey -> Integer
-solve state = product $ map snd bestMonkeys
-  where run = runMonkeys 20 state
+part2 :: S.Seq Monkey -> Integer
+part2 = solve False 10000
+
+solve :: Bool -> Integer -> S.Seq Monkey -> Integer
+solve divideBy3 times state = product $ map snd bestMonkeys
+  where run = runMonkeys divideBy3 (fromInteger times) state
         bestMonkeys = take 2 $ sortOn (Data.Ord.Down . snd) (IM.toList $ _countedItems run)
 
-runMonkeys :: Int -> S.Seq Monkey -> SimianState
-runMonkeys times state = iterate doRound (initState state) !! times
+runMonkeys :: Bool -> Int -> S.Seq Monkey -> SimianState
+runMonkeys divideBy3 times state = iterate doRound (initState divideBy3 state) !! times
 
-initState :: S.Seq Monkey -> SimianState
-initState monkeys = MkState monkeys 0 IM.empty
+initState :: Bool -> S.Seq Monkey -> SimianState
+initState divideBy3 monkeys = MkState monkeys 0 IM.empty divideBy3 0
 
 stepState :: SimianState -> Maybe SimianState
 stepState state@MkState{..} = do
   current <- S.lookup (fromInteger _currentIndex) _monkeys
-  let destinations = processItems current
+  let uniqueModulo = product $ _test <$> _monkeys
+  let destinations = processItems _divideWorryLevel uniqueModulo current
   pure $ snd $ flip runState state $ do
       modify clearCurrent
       modify $ flip (foldl' go) destinations
       modify $ updateCount (toInteger (length destinations))
       modify incrementIndex
   where go :: SimianState -> (Integer, Integer) -> SimianState
-        go state'@(MkState monkeys _ _) (worryLevel, destination) = let newMonkeys = S.adjust (appendToMonkeyList worryLevel) (fromInteger destination) monkeys
+        go state'@(MkState monkeys _ _ _ _) (worryLevel, destination) = let newMonkeys = S.adjust (appendToMonkeyList worryLevel) (fromInteger destination) monkeys
                                                                   in state' { _monkeys = newMonkeys }
         clearCurrent :: SimianState -> SimianState
-        clearCurrent s@(MkState monkeys _ _) = s { _monkeys = S.adjust clearMonkey (fromInteger _currentIndex) monkeys }
-        incrementIndex s@(MkState _ i _) = s { _currentIndex = i+1 }
+        clearCurrent s@(MkState monkeys _ _ _ _) = s { _monkeys = S.adjust clearMonkey (fromInteger _currentIndex) monkeys }
+        incrementIndex s@(MkState _ i _ _ _) = s { _currentIndex = i+1 }
         updateCount amount s = s { _countedItems = IM.insertWith (+) (fromInteger _currentIndex) amount _countedItems }
 
 doRound :: SimianState -> SimianState
-doRound ss = maybe (ss { _currentIndex = 0 }) doRound (stepState ss)
+doRound ss@MkState{..} = maybe (ss { _currentIndex = 0, _roundNumber = _roundNumber + 1 }) doRound (stepState ss)
 
 -- |Returns a list of (worryLevel, destination) for each item
-processItems :: Monkey -> [(Integer, Integer)]
-processItems MkMonkey{..} = map go (toList _items)
-  where go item = let newWorryLevel = (_operation item `div` 3)
+processItems :: Bool -> Integer -> Monkey -> [(Integer, Integer)]
+processItems divideWorryLevel uniqueModulo MkMonkey{..} = map go (toList _items)
+  where go item = let newWorryLevel = if divideWorryLevel then _operation item `div` 3 else _operation item `mod` uniqueModulo
                   in if newWorryLevel `mod` _test == 0 then (newWorryLevel, _trueMonkey) else (newWorryLevel, _falseMonkey)
 
 isDivisibleBy :: Integer -> Integer -> Bool
