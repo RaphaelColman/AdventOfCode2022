@@ -1,33 +1,35 @@
 {-# LANGUAGE RecordWildCards #-}
 module Solutions.Day14 where
 
-import           Common.AoCSolutions (AoCSolution (MkAoCSolution),
-                                      printSolutions, printTestSolutions)
-import           Common.Debugging    (traceLns)
-import           Common.FunctorUtils (fmap2)
-import           Common.Geometry     (Grid, Point, renderVectorMap,
-                                      renderVectorSet)
-import           Common.ListUtils    (flexibleRange)
-import           Control.Lens.Getter ((^.))
-import           Data.Foldable       (Foldable (foldl'), maximumBy, minimumBy)
-import           Data.Function       (on, (&))
-import           Data.List           (find)
-import qualified Data.Map            as M
-import           Data.Maybe          (isJust)
-import qualified Data.Set            as S
-import           Debug.Trace         (traceShow)
-import           Linear              (V2 (V2))
-import           Linear.V2           (R1 (_x), R2 (_y), V2 (V2))
-import           Linear.Vector       (unit)
-import           Text.Trifecta       (CharParsing (string), Parser,
-                                      Parsing (eof), TokenParsing (token),
-                                      comma, commaSep, integer, manyTill, sepBy,
-                                      some, whiteSpace)
+import           Common.AoCSolutions   (AoCSolution (MkAoCSolution),
+                                        printSolutions, printTestSolutions)
+import           Common.Debugging      (traceLns)
+import           Common.FunctorUtils   (fmap2)
+import           Common.Geometry       (Grid, Point, renderVectorMap,
+                                        renderVectorSet)
+import           Common.ListUtils      (flexibleRange)
+import           Control.Lens.Getter   ((^.))
+import           Data.Foldable         (Foldable (foldl'), maximumBy, minimumBy)
+import           Data.Function         (on, (&))
+import           Data.Functor.Base     (ListF (Cons, Nil))
+import           Data.Functor.Foldable (Corecursive (ana))
+import           Data.List             (find)
+import qualified Data.Map              as M
+import           Data.Maybe            (isJust)
+import qualified Data.Set              as S
+import           Debug.Trace           (traceShow)
+import           Linear                (V2 (V2))
+import           Linear.V2             (R1 (_x), R2 (_y), V2 (V2))
+import           Linear.Vector         (unit)
+import           Text.Trifecta         (CharParsing (string), Parser,
+                                        Parsing (eof), TokenParsing (token),
+                                        comma, commaSep, integer, manyTill,
+                                        sepBy, some, whiteSpace)
 
 aoc14 :: IO ()
 aoc14 = do
-  printSolutions 14 $ MkAoCSolution parseInput part1
-  printSolutions 14 $ MkAoCSolution parseInput part2
+  printTestSolutions 14 $ MkAoCSolution parseInput part1
+  printTestSolutions 14 $ MkAoCSolution parseInput part2
 
 type Path = [Point]
 type Rocks = S.Set Point
@@ -51,16 +53,15 @@ parseInput = manyTill parsePath eof
           pure (V2 x y)
         parsePath = sepBy parsePoint (string "->" >> whiteSpace)
 
-part1 :: [Path] -> Maybe Int
+part1 :: [Path] -> Int
 part1 = solve False
 
-part2 :: [Path] -> Maybe Int
+part2 :: [Path] -> Int
 part2 = solve True
 
-solve :: Bool -> [Path] -> Maybe Int
-solve hasFloor paths = do
-  finalState <- runSand $ initMap hasFloor paths
-  pure $ length $ M.filter (==Sand) $ _grid finalState
+solve :: Bool -> [Path] -> Int
+solve hasFloor paths = let finalState = runSand $ initMap hasFloor paths
+                      in length $ M.filter (==Sand) $ _grid finalState
 
 initMap :: Bool -> [Path] -> State
 initMap hasFloor paths = MkState grid Nothing floorHeight 0
@@ -81,9 +82,12 @@ fillIn (V2 x1 y1) (V2 x2 y2)
   | y1 == y2 = [V2 (fromInteger x) y1 | x <- flexibleRange (toInteger x1) (toInteger x2)]
   | otherwise = error "Non orthogonal points"
 
-runSand :: State -> Maybe State
-runSand state = find isFinished toInfinity
-  where toInfinity = iterate step state
+runSand :: State -> State
+runSand = last . ana go
+  where go :: State -> ListF State State
+        go state
+            | isFinished state = Nil
+            | otherwise = Cons state (step state)
 
 step :: State -> State
 step s@MkState{..} = case _fallingSand of
