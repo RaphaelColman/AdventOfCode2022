@@ -13,6 +13,7 @@ import           Data.Foldable       (Foldable (foldl'), maximumBy, minimumBy)
 import           Data.Function       (on, (&))
 import           Data.List           (find)
 import qualified Data.Map            as M
+import           Data.Maybe          (isJust)
 import qualified Data.Set            as S
 import           Debug.Trace         (traceShow)
 import           Linear              (V2 (V2))
@@ -25,7 +26,7 @@ import           Text.Trifecta       (CharParsing (string), Parser,
 
 aoc14 :: IO ()
 aoc14 = do
-  --printTestSolutions 14 $ MkAoCSolution parseInput part1
+  printSolutions 14 $ MkAoCSolution parseInput part1
   printSolutions 14 $ MkAoCSolution parseInput part2
 
 type Path = [Point]
@@ -36,7 +37,8 @@ data State
   = MkState
       { _grid        :: !(M.Map Point Object)
       , _fallingSand :: !(Maybe Point)
-      , _hasFloor    :: !Bool
+      , _floorHeight :: !(Maybe Int)
+      , _steps       :: !Int
       }
   deriving (Eq, Show)
 
@@ -49,10 +51,11 @@ parseInput = manyTill parsePath eof
           pure (V2 x y)
         parsePath = sepBy parsePoint (string "->" >> whiteSpace)
 
+part1 :: [Path] -> Maybe Int
 part1 = solve False
 
-part2 paths = solve True paths
-  where st = initMap True paths
+part2 :: [Path] -> Maybe Int
+part2 = solve True
 
 solve :: Bool -> [Path] -> Maybe Int
 solve hasFloor paths = do
@@ -60,11 +63,10 @@ solve hasFloor paths = do
   pure $ length $ M.filter (==Sand) $ _grid finalState
 
 initMap :: Bool -> [Path] -> State
-initMap hasFloor = init hasFloor
-          . M.fromSet (const Rock)
-          . S.unions
-          . map fillPath
-  where init hasFloor grid = MkState grid Nothing hasFloor
+initMap hasFloor paths = MkState grid Nothing floorHeight 0
+  where grid = M.fromSet (const Rock) $ S.unions $ map fillPath paths
+        floorHeight = let (V2 _ lowest) = maximumBy (compare `on` (^. _y)) (M.keys grid)
+                            in if hasFloor then Just (lowest + 2) else Nothing
 
 
 fillPath :: Path -> Rocks
@@ -87,21 +89,19 @@ step :: State -> State
 step s@MkState{..} = case _fallingSand of
   Nothing -> s { _fallingSand = Just (V2 500 0) }
   Just sand -> case nextSpace of
-    Nothing -> MkState (M.insert sand Sand _grid) Nothing _hasFloor
-    Just ns -> s { _fallingSand = Just ns }
+    Nothing -> s { _grid = M.insert sand Sand _grid, _fallingSand = Nothing, _steps = _steps + 1}
+    Just ns -> s { _fallingSand = Just ns, _steps = _steps + 1 }
     where nextSpace = let down = sand + unit _y
                           downLeft = down - unit _x
                           downRight = down + unit _x
                       in find validNextSpace [down, downLeft, downRight]
-          justRocks = M.filter (==Rock) _grid
-          isFloorHeight pt = let (V2 _ lowest) = maximumBy (compare `on` (^. _y)) (M.keys justRocks) --This is too slow. We should cache the floor height early on
-                                 floorHeight = lowest + 2
-                              in (pt ^. _y) == floorHeight
+          hasFloor = isJust _floorHeight
+          isFloorHeight (V2 _ y) = Just y == _floorHeight
           isOccupied = flip M.member _grid
-          validNextSpace pt = not (isOccupied pt) && not (isFloorHeight pt && _hasFloor)
+          validNextSpace pt = not (isOccupied pt) && not (isFloorHeight pt && hasFloor)
 
 isFinished :: State -> Bool
-isFinished s@MkState{..} = if _hasFloor
+isFinished s@MkState{..} = if isJust _floorHeight
                           then M.lookup (V2 500 0) _grid == Just Sand
                           else sandCascade s
 
@@ -111,11 +111,3 @@ sandCascade MkState{..} = case _fallingSand of
   Just (V2 x y) -> y > lowestRock ^. _y
   where lowestRock = M.keys _grid
                     & maximumBy (compare `on` (^. _y))
-
-renderGrid MkState{..} = renderVectorMap $ M.map go withFallingSand
-  where go o = case o of
-          Rock -> '#'
-          Sand -> 'o'
-        withFallingSand = case _fallingSand of
-          Nothing -> _grid
-          Just s  -> M.insert s Sand _grid
