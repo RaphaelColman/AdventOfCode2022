@@ -75,3 +75,7 @@ allOrthogonalNeighbours v = S.fromList $ map (v +) allOrthogonalDirections
 
 gridOrthogonalNeighbours :: Grid a -> Point -> M.Map Point a
 gridOrthogonalNeighbours grid point = M.restrictKeys grid $ allOrthogonalNeighbours point
+
+manhattanDistance :: Point -> Point -> Int
+manhattanDistance (V2 x1 y1) (V2 x2 y2) = abs (x1 - x2) + abs (y1 - y2)
+
