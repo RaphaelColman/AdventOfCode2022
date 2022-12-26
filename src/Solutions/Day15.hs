@@ -20,7 +20,7 @@ import           Data.Foldable                  (find, maximumBy, minimumBy)
 import           Data.Function                  (on)
 import           Data.List                      (tails)
 import qualified Data.Map                       as M
-import           Data.Maybe                     (isJust, catMaybes)
+import           Data.Maybe                     (catMaybes, isJust)
 import qualified Data.Set                       as S
 import           Debug.Trace                    (traceShow)
 import           GHC.OldList                    (inits)
@@ -60,7 +60,7 @@ parseInput = some $ token parseSensorBeaconPair
 part1 :: [Sensor] -> Int
 part1 = solve1 2000000
 
-part2 :: [Sensor] -> Maybe Point
+part2 :: [Sensor] -> Maybe Int
 part2 = solve2 20
 
 solve1 :: Int -> [Sensor] -> Int
@@ -68,8 +68,8 @@ solve1 yVal sensors = length $ S.difference cc beaconsOnRow
   where cc = combinedCrossSections yVal sensors
         beaconsOnRow = S.fromList $ map (^. _x) $ filter (\b -> b ^. _y == yVal) $ map _beacon sensors
 
-solve2 :: Int -> [Sensor] -> Maybe Point
-solve2 searchSpace sensors = flip runReader sensors $ do
+solve2 :: Int -> [Sensor] -> Maybe Int
+solve2 searchSpace sensors = fmap tuningFrequency $ flip runReader sensors $ do
   validPoints <- catMaybes <$> traverse (validBoundaryPoints searchSpace) sensors
   pure $ headMay validPoints
 
@@ -101,5 +101,5 @@ outsideOfSensorRanges :: Point -> Reader [Sensor] Bool
 outsideOfSensorRanges pt = do
   all (\MkSensor{..} -> manhattanDistance _sensor _beacon < manhattanDistance pt _sensor) <$> ask
 
-tuningFrequency :: Num a => V2 a -> a
+tuningFrequency :: Point -> Int
 tuningFrequency (V2 x y) = x*4000000 + y
