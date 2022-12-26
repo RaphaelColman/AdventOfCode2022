@@ -44,6 +44,8 @@ dependencies:
 - regex-tdfa
 - recursion-schemes
 - zippers
+- astar
+- unordered-containers
 
 library:
   source-dirs: src
