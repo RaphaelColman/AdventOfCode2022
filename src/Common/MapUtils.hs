@@ -3,6 +3,7 @@ module Common.MapUtils where
 import           Data.Either   (partitionEithers)
 import           Data.Foldable (minimumBy)
 import           Data.Function (on)
+import           Data.List     (maximumBy)
 import qualified Data.Map      as M
 
 mapIf :: (a -> Bool) -> (a -> a) -> M.Map k a -> M.Map k a
@@ -32,3 +33,6 @@ partitionKeys f combining map' =
 
 minimumValue :: (Ord a) => M.Map k a -> (k, a)
 minimumValue = minimumBy (compare `on` snd) . M.toList
+
+maximumValue :: (Ord a) => M.Map k a -> (k, a)
+maximumValue = maximumBy (compare `on` snd) . M.toList

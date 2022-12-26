@@ -3,33 +3,45 @@ module Solutions.Day15
     ( aoc15
     ) where
 
-import           Common.AoCSolutions (AoCSolution (MkAoCSolution),
-                                      printSolutions, printTestSolutions)
-import           Common.Debugging    (traceLns)
-import           Common.FunctorUtils (fmap2)
-import           Common.Geometry     (Point, manhattanDistance, renderVectorSet)
-import           Common.ListUtils    (flexibleRange)
-import           Control.Lens        ((^.))
-import           Data.Foldable       (maximumBy, minimumBy)
-import           Data.Function       (on)
-import           Data.List           (tails)
-import qualified Data.Set            as S
-import           Debug.Trace         (traceShow)
-import           GHC.OldList         (inits)
-import           Linear              (V2 (V2))
-import Linear.V2 ( perp, R1(_x), R2(_y), V2(V2) )
-import           Text.Trifecta       (CharParsing (string), Parser,
-                                      TokenParsing (token), integer, some)
+import           Common.AoCSolutions            (AoCSolution (MkAoCSolution),
+                                                 printSolutions,
+                                                 printTestSolutions)
+import           Common.Debugging               (traceLns)
+import           Common.FunctorUtils            (fmap2)
+import           Common.Geometry                (Point, manhattanDistance,
+                                                 renderVectorSet)
+import           Common.ListUtils               (flexibleRange)
+import           Common.MapUtils                (maximumValue)
+import           Control.Lens                   ((^.))
+import           Control.Monad                  (filterM)
+import           Control.Monad.RWS              (MonadReader (ask))
+import           Control.Monad.Reader           (Reader, ReaderT, runReader)
+import           Data.Foldable                  (find, maximumBy, minimumBy)
+import           Data.Function                  (on)
+import           Data.List                      (tails)
+import qualified Data.Map                       as M
+import           Data.Maybe                     (isJust, catMaybes)
+import qualified Data.Set                       as S
+import           Debug.Trace                    (traceShow)
+import           GHC.OldList                    (inits)
+import           Linear                         (V2 (V2))
+import           Linear.V2                      (R1 (_x), R2 (_y), V2 (V2),
+                                                 perp)
+import           Safe                           (headMay)
+import           Text.Trifecta                  (CharParsing (string), Parser,
+                                                 TokenParsing (token), integer,
+                                                 some)
+import           Text.Trifecta.Util.IntervalMap (search)
 
 aoc15 :: IO ()
 aoc15 = do
-  --printSolutions 15 $ MkAoCSolution parseInput part1
+  printSolutions 15 $ MkAoCSolution parseInput part1
   printTestSolutions 15 $ MkAoCSolution parseInput part2
 
 data Sensor
   = MkSensor
-      { _sensor    :: !Point
-      , _beacon    :: !Point
+      { _sensor :: !Point
+      , _beacon :: !Point
       }
   deriving (Eq, Show)
 
@@ -45,17 +57,23 @@ parseInput = some $ token parseSensorBeaconPair
           let beacon = fromInteger <$> V2 beaconX beaconY
           pure $ MkSensor sensor beacon
 
-part1 = solve 2000000
+part1 :: [Sensor] -> Int
+part1 = solve1 2000000
 
-part2 sensors = traceLns (renderVectorSet pts) $ aSensor
-  where aSensor = sensors !! 6
-        pts = boundaryPoints aSensor
+part2 :: [Sensor] -> Maybe Point
+part2 = solve2 20
 
-solve yVal sensors = length $ S.difference cc beaconsOnRow
+solve1 :: Int -> [Sensor] -> Int
+solve1 yVal sensors = length $ S.difference cc beaconsOnRow
   where cc = combinedCrossSections yVal sensors
         beaconsOnRow = S.fromList $ map (^. _x) $ filter (\b -> b ^. _y == yVal) $ map _beacon sensors
 
--- Did some algebra to work this out: if we know the y coordinate, we can find the 
+solve2 :: Int -> [Sensor] -> Maybe Point
+solve2 searchSpace sensors = flip runReader sensors $ do
+  validPoints <- catMaybes <$> traverse (validBoundaryPoints searchSpace) sensors
+  pure $ headMay validPoints
+
+-- Did some algebra to work this out: if we know the y coordinate, we can find the
 -- two points on the rhombus for that y coordinate which have the correct manhattan distance
 yCrossSection :: Int -> Sensor -> S.Set Int
 yCrossSection yval MkSensor{..} = S.fromList [x1..x2] --This will be empty if the manhattan distance is too small because x1 will be > than x2
@@ -67,9 +85,21 @@ combinedCrossSections :: Int -> [Sensor] -> S.Set Int
 combinedCrossSections yVal = S.unions . map (yCrossSection yVal)
 
 --All the points immediately outside the rhombus
-boundaryPoints :: Sensor -> S.Set Point
-boundaryPoints MkSensor{..} = S.fromList allPoints
+validBoundaryPoints :: Int -> Sensor -> Reader [Sensor] (Maybe Point)
+validBoundaryPoints range MkSensor{..} = do
+  headMay <$> filterM outsideOfSensorRanges allBoundaryPoints
   where mDistance = manhattanDistance _sensor _beacon
-        justTopRight = zipWith V2 (flexibleRange 0 (mDistance + 1)) (flexibleRange (mDistance +1) 0)
+        justTopRight = zipWith V2 (flexibleRange 0 (mDistance + 1)) (flexibleRange (mDistance + 1) 0)
         allVectors = concatMap (take 4 . iterate perp) justTopRight
-        allPoints = map (+ _sensor) allVectors
+        allBoundaryPoints = filter (inSearchSpace range) $ map (+ _sensor) allVectors
+
+inSearchSpace :: Int -> Point -> Bool
+inSearchSpace range (V2 x y) = (x >= 0 && x <= range)
+                              && (y >= 0 && y <= range)
+
+outsideOfSensorRanges :: Point -> Reader [Sensor] Bool
+outsideOfSensorRanges pt = do
+  all (\MkSensor{..} -> manhattanDistance _sensor _beacon < manhattanDistance pt _sensor) <$> ask
+
+tuningFrequency :: Num a => V2 a -> a
+tuningFrequency (V2 x y) = x*4000000 + y
