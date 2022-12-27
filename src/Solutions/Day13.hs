@@ -4,12 +4,12 @@ module Solutions.Day13
 
 import           Common.AoCSolutions     (AoCSolution (MkAoCSolution),
                                           printSolutions, printTestSolutions)
+import           Common.FunctorUtils     (fmap2)
 import           Control.Applicative     (Alternative ((<|>)))
 import           Data.List               (elemIndex, sort)
 import           Text.Parser.Combinators (Parsing (try), count)
 import           Text.Trifecta           (Parser, brackets, commaSep, integer,
                                           parens, some)
-import Common.FunctorUtils (fmap2)
 
 data Value
   = VInt !Integer
