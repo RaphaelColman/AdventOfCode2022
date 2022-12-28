@@ -32,8 +32,8 @@ aoc13 = do
 parsePacketPairs :: Parser [PacketPair]
 parsePacketPairs = some parsePair
   where parsePair = do
-        [p1, p2] <- count 2 parseVList
-        pure (p1, p2)
+          [p1, p2] <- count 2 parseVList
+          pure (p1, p2)
 
 parseAllPackets :: Parser [Value]
 parseAllPackets = some parseVList

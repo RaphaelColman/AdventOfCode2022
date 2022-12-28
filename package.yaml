@@ -46,6 +46,7 @@ dependencies:
 - zippers
 - astar
 - unordered-containers
+- hashable
 
 library:
   source-dirs: src

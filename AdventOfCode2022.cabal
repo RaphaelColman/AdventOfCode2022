@@ -80,6 +80,7 @@ library
     , directory
     , dotenv
     , finite-typelits
+    , hashable
     , lens
     , linear
     , monad-extras
@@ -117,6 +118,7 @@ executable AdventOfCode2022-exe
     , directory
     , dotenv
     , finite-typelits
+    , hashable
     , lens
     , linear
     , monad-extras
@@ -155,6 +157,7 @@ test-suite AdventOfCode2022-test
     , directory
     , dotenv
     , finite-typelits
+    , hashable
     , lens
     , linear
     , monad-extras
