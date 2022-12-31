@@ -11,10 +11,11 @@ import           Common.AoCSolutions     (AoCSolution (MkAoCSolution),
 import           Common.FunctorUtils     (fmap2)
 import           Common.ListUtils        (freqs)
 import           Control.Applicative     (many, some, (<|>))
+import           Control.Monad.Reader    (MonadReader (ask), Reader, runReader)
 import           Data.Foldable           (Foldable (toList))
 import           Data.Function           ((&))
 import           Data.Functor            (($>))
-import           Data.Graph.AStar        (aStar)
+import           Data.Graph.AStar        (aStar, aStarM)
 import qualified Data.HashMap.Strict     as HM
 import           Data.HashSet            (HashSet)
 import qualified Data.HashSet            as HS
@@ -79,55 +80,71 @@ part1 mp = solve mp state
 --on my input, there are only 15 valves which release pressure.
 --max flow is 201
 
-neighbourNodes :: ValveSystem -> ValveState -> HashSet ValveState
-neighbourNodes system state@MkValveState{..} = traceShow dbg neighbours
-  where cValve@MkValveData{..} = system HM.! _currentValve
-        incremented = state { _currentTime = _currentTime+1, _totalReleased = _totalReleased + _currentFlow, _visited = HS.insert _currentValve _visited }
-        validChildren = filter (\child -> not (child `HS.member` _visited)) _children
-        travelValves = map (\child -> incremented { _currentValve = child }) validChildren
-        openCurrentValve = let newFlow = _currentFlow + _flowRate
-                           in [incremented {
-                                     _currentFlow = newFlow,
-                                     _valvesOn = HS.insert _currentValve _valvesOn,
-                                     _visited = HS.singleton _currentValve --Clear this down because we can visit old nodes again
-                                     } | not (_currentValve `HS.member` _valvesOn)]
-        neighbours = if allValvesOn
-              then HS.singleton incremented --no point going anywhere
-              else HS.fromList $! travelValves ++ openCurrentValve
-        allValvesOn = null $ HM.filterWithKey (\k MkValveData{..} -> not (k `HS.member` _valvesOn) && _flowRate /= 0) system
-        dbg :: String = printf "currentFlow: %d, currentTime: %d" _currentFlow _currentTime
+neighbourNodes :: ValveState -> Reader ValveSystem (HashSet ValveState)
+neighbourNodes state@MkValveState{..} = do
+  system <- ask
+  let cValve@MkValveData{..} = system HM.! _currentValve
+  let incremented = state { _currentTime = _currentTime+1, _totalReleased = _totalReleased + _currentFlow, _visited = HS.insert _currentValve _visited }
+  let validChildren = filter (\child -> not (child `HS.member` _visited)) _children
+  let travelValves = map (\child -> incremented { _currentValve = child }) validChildren
+  let shouldOpenValve = not (_currentValve `HS.member` _valvesOn) && _flowRate > 0
+  let openCurrentValve = let newFlow = _currentFlow + _flowRate
+                     in [incremented {
+                               _currentFlow = newFlow,
+                               _valvesOn = HS.insert _currentValve _valvesOn,
+                               _visited = HS.singleton _currentValve --Clear this down because we can visit old nodes again
+                               } | shouldOpenValve]
+  let allValvesOn = null $ HM.filterWithKey (\k MkValveData{..} -> not (k `HS.member` _valvesOn) && _flowRate /= 0) system
+  let neighbours = if allValvesOn
+        then HS.singleton incremented --no point going anywhere
+        else HS.fromList $! travelValves ++ openCurrentValve
+  let dbg :: String = printf "state: %s, neighbours: %s" (show state) (show (HS.map cv neighbours))
+  traceShow dbg $ pure neighbours
 
 --This is still really slow. Maybe I can do this without copying the map of valves everywhere (using the state monad perhaps?)
 --Or maybe I can create a better heuristic function?
 
 --Instead of of this, could I just make the cost the sum of the unopened valves?
-cost :: ValveSystem -> ValveState -> ValveState -> Integer
-cost system _ MkValveState{..} = remainingValvePressure
-  where remainingValvePressure = HM.filterWithKey (\k v -> not (k `HS.member` _valvesOn)) system
+cost :: ValveState -> ValveState -> Reader ValveSystem Integer
+cost _ MkValveState{..} = do
+  system <- ask
+  pure $ HM.filterWithKey (\k v -> not (k `HS.member` _valvesOn)) system
                           & toList
                           & map _flowRate
                           & sum
 
 --Is there a better heuristic than this? Something like:
 --Assume that on every step, I will hit the remaining unopened valves?
-heuristic :: ValveSystem -> ValveState -> Integer
-heuristic system MkValveState{..} = estimatedCost
-  where remainingValves = HM.filterWithKey (\k v -> not (k `HS.member` _valvesOn)) system
+heuristic :: ValveState -> Reader ValveSystem Integer
+heuristic state@MkValveState{..} = do
+  system <- ask
+  --let remainingValves = HM.filterWithKey (\k v -> not (k `HS.member` _valvesOn)) system
+  --                        & toList
+  --                        & map _flowRate
+  --                        & sort
+  --                        & reverse
+  --let remainingTime = (30 - _currentTime) `div` 2 --It takes two moves for a valve to contribute
+  --let estimate = sum $ map sum $ take (fromInteger remainingTime) $ tails remainingValves
+  --let dbg :: String = printf "state: %s, estimate: %s" (show state) (show estimate)
+  --pure estimate
+  pure $ HM.filterWithKey (\k v -> not (k `HS.member` _valvesOn)) system
                           & toList
                           & map _flowRate
-                          & sort
-                          & reverse
-        remainingPressure = sum remainingValves
-        remainingTime = (30 - _currentTime) `div` 2 --It takes two moves for a valve to contribute
-        estimatedCost = sum $ map sum $ take (fromInteger remainingTime) $ tails remainingValves
+                          & sum
 
-finished :: ValveSystem -> ValveState -> Bool
-finished system MkValveState{..} = _currentTime == 30 || allValvesOn 
-  where allValvesOn = null $ HM.filterWithKey (\k MkValveData{..} -> not (k `HS.member` _valvesOn) && _flowRate /= 0) system --Maybe this would be easier if I just calculated maxPressure up front
+finished :: ValveState -> Reader ValveSystem Bool
+finished MkValveState{..} = do
+  system <- ask
+  let allValvesOn = null $ HM.filterWithKey (\k MkValveData{..} -> not (k `HS.member` _valvesOn) && _flowRate /= 0) system --Maybe this would be easier if I just calculated maxPressure up front
+  pure $ _currentTime == 30 || allValvesOn
 
 solve :: ValveSystem -> ValveState -> Maybe Integer
 solve system state = do
-  solved <- aStar (neighbourNodes system) (cost system) (heuristic system) (finished system) state
+  solved <- flip runReader system $ aStarM neighbourNodes cost heuristic finished (pure state)
   let finalState@MkValveState{..} = last solved
   let remainingPressure = (30 - _currentTime) * _currentFlow
-  pure $ traceShow finalState $ _totalReleased + remainingPressure
+  let route = fmap cv solved
+  let dbg :: String = printf "route: %s, finalState = %s" (show route) (show finalState)
+  traceShow dbg $ pure $ _totalReleased + remainingPressure
+
+cv = _currentValve
