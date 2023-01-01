@@ -1,0 +1,53 @@
+digraph tunnels {
+  JC -> {XS, XK}
+  TK -> {AA, RA}
+  PY -> {UB, MW}
+  XK -> {CD, JC, TP, UE}
+  EI -> {UB, HD}
+  OV -> {QC, WK}
+  CX -> {ZN, AM, OE, YS, QE}
+  YS -> {QC, CX}
+  DC -> {UE, NM}
+  EA -> {QE, XO, GX}
+  VE -> {YH, NM}
+  RN -> {WK, NU}
+  VJ -> {QC, CS}
+  HD -> {JI, EI}
+  UB -> {EI, PY}
+  XS -> {JC, CE}
+  AM -> {NU, CX}
+  GX -> {EA, RA}
+  UI -> {NC, ZG}
+  NM -> {DC, VE, DX}
+  CE -> {XS, WD}
+  NC -> {UI, VQ}
+  TP -> {XK, RA}
+  ZN -> {CX, XI}
+  CS -> {AA, VJ}
+  MW -> {PY}
+  AA -> {TK, WC, CS, AL, MS}
+  RA -> {WD, TP, TK, GX, JI}
+  NU -> {DU, AM, RN, HS, AL}
+  QE -> {CX, EA}
+  AH -> {WK, MS}
+  YH -> {VE, CD}
+  SH -> {DU, ZG}
+  OE -> {WC, CX}
+  XO -> {EA, ZG}
+  JI -> {RA, HD}
+  XI -> {WK, ZN}
+  HS -> {QC, NU}
+  VQ -> {WK, NC}
+  UE -> {XK, DC}
+  YP -> {DX}
+  WD -> {CE, RA}
+  DX -> {NM, YP}
+  ZG -> {UI, SH, XO}
+  MS -> {AA, AH}
+  QC -> {HS, VJ, OV, YS}
+  DU -> {NU, SH}
+  WK -> {RN, XI, VQ, OV, AH}
+  CD -> {YH, XK}
+  AL -> {AA, NU}
+  WC -> {OE, AA}
+}

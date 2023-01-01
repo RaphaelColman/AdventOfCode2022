@@ -33,6 +33,7 @@ library
       Common.FunctorUtils
       Common.Geometry
       Common.GraphUtils
+      Common.HashSetUtils
       Common.ListUtils
       Common.MapUtils
       Common.MathUtils
