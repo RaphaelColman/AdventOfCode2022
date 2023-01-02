@@ -1,5 +1,6 @@
 module Common.HashSetUtils
     ( hsFilterM
+    , hsNotMember
     ) where
 import           Data.Foldable (foldrM)
 import           Data.HashSet  (HashSet)
@@ -15,5 +16,7 @@ hsFilterM pred hs
                                     if valid
                                     then pure (HS.insert value acc)
                                     else pure acc
-                            )
-                                    HS.empty hs
+                            ) HS.empty hs
+
+hsNotMember :: (Eq a, Hashable a) => a -> HashSet a -> Bool
+hsNotMember element set = not $ element `HS.member` set
