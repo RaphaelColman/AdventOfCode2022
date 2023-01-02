@@ -57,7 +57,7 @@ import           Text.Trifecta                (CharParsing (anyChar, char, strin
 data ValveData
   = MkValveData
       { _flowRate :: !Integer
-      , _children :: ![String] --Can make this a set
+      , _children :: ![String]
       , _label    :: !String
       }
   deriving (Eq, Generic, Ord, Show)
@@ -109,10 +109,12 @@ parseValveLine = do
   children <- commaSep (some letter)
   pure (name, MkValveData flowrate children name)
 
+part1 :: ValveSystem -> Maybe Integer
 part1 mp = doSolve mp state
   where state = MkValveState agents 29 0 HS.empty
         agents = HM.fromList [(0, MkAgent "AA" HS.empty)]
 
+part2 :: ValveSystem -> Maybe Integer
 part2 mp = doSolve mp state
   where state = MkValveState agents 25 0 HS.empty
         agents = MkAgent "AA" HS.empty
@@ -134,13 +136,27 @@ neighbourNodesForAgent index state@MkValveState{..} = do
           & (agents . ix index) . visited .~ HS.singleton _currentValve
           & currentFlow .~ (_currentFlow + _flowRate)
           | shouldOpenValve]
-  let dbg :: String = printf "agent %d: original: %s, newstates: %s" index (show state) (show (travelValves ++ openCurrentValve))
-  --pure $ HS.fromList $  travelValves ++ openCurrentValve
-  --This is for the case where one agent goes passed a valve and the other agent turns the valve on (the first agent will be stuck). I don't think I need it
+  --This is for the case where one agent goes passed a valve and the other agent turns the valve on (the first agent will be stuck).
   let newStates = travelValves ++ openCurrentValve
+  mustTurnOnValve <- mustTurnOnValve index state
   pure $ if null newStates
           then HS.singleton $ state & (agents . ix index) .visited .~ HS.singleton _currentValve
-          else HS.fromList newStates
+          else if mustTurnOnValve
+                then HS.fromList openCurrentValve
+                else HS.fromList newStates
+
+mustTurnOnValve :: Integer -> ValveState -> Reader ValveSystem Bool
+mustTurnOnValve index state@MkValveState{..} = do
+  let agent@MkAgent{..} = (state ^. agents) HM.! index
+  cValve@MkValveData{..} <- asks (HM.! _currentValve)
+  let openCurrentValve = state
+          & valvesOn .~ HS.insert (_currentTime, cValve) _valvesOn
+          & (agents . ix index) . visited .~ HS.singleton _currentValve
+          & currentFlow .~ (_currentFlow + _flowRate)
+  let ifOpenedPressure = openCurrentValve ^. valvesOn & totalPressureReleased
+  ifSkippedPressure <- completeOptimistically state
+  pure $ _flowRate > 0 && ifSkippedPressure < ifOpenedPressure --If you assume all the best valves are nearby and skipping it still is worse than opening it, you must open it.
+
 
 neighbourNodes :: ValveState -> Reader ValveSystem (HashSet ValveState)
 neighbourNodes state@MkValveState{..} = do
@@ -157,22 +173,23 @@ getCurrentValves vs = vs ^. agents & HM.map _currentValve
 neighbourNodesWithEstimate :: Integer -> ValveState -> Reader ValveSystem (HashSet ValveState)
 neighbourNodesWithEstimate estimate state = do
   allNeighbours <- neighbourNodes state
-  filteredStates <- hsFilterM (canSurpassTotalFlow estimate) allNeighbours
-  let currentTime = fmap _currentTime $ headMay $ toList filteredStates
-  let dbg :: String = printf "before filter: %d, after filter: %d" (length allNeighbours) (length filteredStates)
-  let filterHelped :: String = printf "filter helped: %s"  (show (length allNeighbours > length filteredStates))
-  pure filteredStates
+  hsFilterM (canSurpassTotalFlow estimate) allNeighbours
+
+completeOptimistically :: ValveState -> Reader ValveSystem Integer
+completeOptimistically state@MkValveState{..} = do
+  remaining <- sortOn Down <$> remainingUsefulValves state
+  let numberOfAgents = length $ state ^. agents
+  let countdown = concatMap (replicate numberOfAgents) [_currentTime, _currentTime-2 .. 0]
+  let otherValves = HS.fromList $ zip countdown remaining
+  let optimisticValvesOn = HS.union _valvesOn otherValves
+  pure $ totalPressureReleased optimisticValvesOn
 
 --This needs to to take into account that there are multiple agents
 canSurpassTotalFlow :: Integer -> ValveState -> Reader ValveSystem Bool
 canSurpassTotalFlow max state@MkValveState{..} = do
   remaining <- reverse . sort <$> remainingUsefulValves state
-  let numberOfAgents = length $ state ^. agents
-  let countdown = concatMap (replicate numberOfAgents) [_currentTime, _currentTime-2 .. 0]
-  let otherValves = HS.fromList $ zip countdown remaining
-  let optimisticValvesOn = HS.union _valvesOn otherValves
-  let dbg :: String = printf "optimistic valves on: %s, optimistic total: %d, max estimate: %d" (show optimisticValvesOn) (totalPressureReleased optimisticValvesOn) max
-  pure $ totalPressureReleased optimisticValvesOn >= max
+  optimisticPressure <- completeOptimistically state
+  pure $ optimisticPressure >= max
 
 cost :: ValveState -> ValveState -> Reader ValveSystem Integer
 cost _ state@MkValveState{..} = do
@@ -185,10 +202,8 @@ heuristic :: ValveState -> Reader ValveSystem Integer
 heuristic state@MkValveState{..} = do
   remaining <- remainingUsefulValves state
   let sortedValveFlows = reverse . sort $ map _flowRate remaining
-  let stepsRemaining = _currentTime `div` 2
-  --pure $ sum $ map sum $ take (fromInteger stepsRemaining) $ tails sortedValveFlows
-  pure $ sum $ map _flowRate remaining
-
+  let stepsRemaining = toInteger (length _agents) * _currentTime `div` 2
+  pure $ sum $ map sum $ take (fromInteger stepsRemaining) $ tails sortedValveFlows
 
 finished :: ValveState -> Reader ValveSystem Bool
 finished state@MkValveState{..} = do
@@ -215,21 +230,16 @@ solve :: ValveState -> MaybeT (Reader ValveSystem) Integer
 solve state = do
   naiveEstimate <- lift $ naiveSearch 0 25 (HS.singleton state) (reduceStatesNaively 100)
   let dbg :: String = printf "The best value must be higher than or equal to: %d" naiveEstimate
-  --path <- trace dbg $ MaybeT $ aStarM (neighbourNodesWithEstimate naiveEstimate) cost heuristic finished (pure state)
-  lift $ naiveSearch 0 25 (HS.singleton state) $ reduceStatesNaively 1000
-  --let finalState = last path
-  --let dbg2 :: String = printf "valvesOn at end: %s" (show (finalState ^. valvesOn))
-  --trace dbg2 $ pure $ totalPressureReleased $ finalState ^. valvesOn
+  path <- trace dbg $ MaybeT $ aStarM (neighbourNodesWithEstimate naiveEstimate) cost heuristic finished (pure state)
+  let finalState = last path
+  pure $ totalPressureReleased $ finalState ^. valvesOn
 
-
---No finish state yet!
 naiveSearch :: Integer -> Integer -> HashSet ValveState -> Reducer -> Reader ValveSystem Integer
 naiveSearch bestScore timeRemaining states reducer = do
   nextStates <- HS.unions <$> traverse neighbourNodes (toList states)
   let bestState = maximumMay $ HS.map (totalPressureReleased . _valvesOn) nextStates
   let newBestScore = max bestScore (fromMaybe 0 bestState)
   reducedStates <- reducer nextStates
-  let dbg :: String = printf "states: %d, reducedStates: %d" (length nextStates) (length reducedStates)
   if timeRemaining /= 0 || null states
   then naiveSearch newBestScore (timeRemaining-1) reducedStates reducer
   else pure newBestScore
