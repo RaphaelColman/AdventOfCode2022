@@ -17,10 +17,9 @@ data Value
   deriving (Eq, Show)
 
 instance Ord Value where
-  compare (VInt left) (VInt right)      = compare left right
   compare left@(VList _) right@(VInt _) = compare left (VList [right])
   compare left@(VInt _) right@(VList _) = compare (VList [left]) right
-  compare (VList left) (VList right)    = compare left right
+  compare left right    = compare left right
 
 type PacketPair = (Value, Value)
 

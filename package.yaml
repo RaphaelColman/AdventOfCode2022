@@ -47,6 +47,7 @@ dependencies:
 - astar
 - unordered-containers
 - hashable
+- raw-strings-qq
 
 library:
   source-dirs: src
