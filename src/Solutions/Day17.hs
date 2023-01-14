@@ -3,13 +3,13 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
-module Solutions.Day17
-    ( aoc17
-    ) where
+module Solutions.Day17 where
 
 import           Common.AoCSolutions      (AoCSolution (MkAoCSolution),
                                            printSolutions, printTestSolutions)
-import           Common.Floyd             (hareAndTortoise, hareAndTortoise)
+import           Common.Debugging         (traceLns)
+import           Common.Floyd             (hareAndTortoise, index, node, CycleData (MkCycleData))
+import qualified Common.Floyd             as Floyd (length)
 import           Common.Geometry          (enumerateMultilineStringToVectorMap,
                                            renderVectorSet)
 import           Control.Applicative      ((<|>))
@@ -22,7 +22,8 @@ import           Control.Monad.State      (MonadState (put), State,
                                            StateT (runStateT), execState, get,
                                            gets, runState)
 import           Control.Monad.State.Lazy (state)
-import           Data.Foldable            (Foldable (foldl'), foldlM, minimumBy)
+import           Data.Foldable            (Foldable (foldl'), foldlM, maximumBy,
+                                           minimumBy)
 import           Data.Function            (on, (&))
 import           Data.List                (intersperse)
 import qualified Data.Map                 as M
@@ -38,17 +39,19 @@ import           Text.Parser.Combinators  (Parsing (try), some)
 import           Text.Printf              (printf)
 import           Text.RawString.QQ        (r)
 import           Text.Trifecta            (CharParsing (anyChar), Parser)
+import Data.Sequence (iterateN)
 
 data Direction = LEFT | RIGHT deriving (Enum, Eq, Ord, Show)
 
 type Rock = Set (V2 Int)
 data CaveState
   = MkState
-      { _currentRock   :: !Rock
-      , _grid          :: !(Set (V2 Int))
-      , _rockList      :: ![Rock]
-      , _directionList :: ![Direction]
-      , _rockCount     :: !Integer
+      { _currentRock    :: !Rock
+      , _grid           :: !(Set (V2 Int))
+      , _rockList       :: ![Rock]
+      , _directionList  :: ![Direction]
+      , _directionPhase :: !Int --Total number of directions before the cycle repeats
+      , _rockCount      :: !Integer
       }
   deriving (Eq)
 
@@ -58,9 +61,10 @@ data CaveProfile
       , _cRock      :: !Rock
       , _directions :: ![Direction]
       }
-  deriving (Eq)
+  deriving (Eq, Show)
 
 makeLenses ''CaveState
+makeLenses ''CaveProfile
 
 instance Show CaveState where
   show :: CaveState -> String
@@ -68,10 +72,19 @@ instance Show CaveState where
             in renderVectorSet fullGrid
 
 
+toProfile :: CaveState -> CaveProfile
+toProfile cs = MkCaveProfile tops (normalise (cs ^. currentRock)) directions
+  where topForX x = minimumBy (compare `on` (^. _y)) $ S.filter (\v -> (v ^. _x) == x) $ cs ^. grid
+        tops = normalise $ S.fromList $ map topForX [0..6]
+        directions = take (cs ^. directionPhase) (cs ^. directionList)
+
+normalise :: Set (V2 Int) -> Set (V2 Int)
+normalise points = S.map (\v -> v - minimum points) points
+
 aoc17 :: IO ()
 aoc17 = do
-  printSolutions 17 $ MkAoCSolution parseInput part1
-  --printSolutions 17 $ MkAoCSolution parseInput part2
+  --printTestSolutions 17 $ MkAoCSolution parseInput part1
+  printTestSolutions 17 $ MkAoCSolution parseInput part2
 
 parseInput :: Parser [Direction]
 parseInput = some parseDirection
@@ -87,22 +100,57 @@ parseInput = some parseDirection
 part1 :: [Direction] -> V2 Int
 part1 directions = minimumBy (compare `on` (^. _y)) $ cs ^. grid
   where (_, cs) = flip runState (initState directions) $ do
-                stepState `untilM` gets ((==2022) . (^. rockCount))
+                ffState `untilM` gets ((==2022) . (^. rockCount))
 
 --part2 :: [Direction] -> V2 Int
-part2 directions = hareAndTortoise (execState stepState) (initState directions)
+part2 = calculateHeightFromCycles
+
+--calculateHeightFromCycles :: [Direction] -> Maybe Int
+calculateHeightFromCycles directions = do
+  let start = initState directions
+  (MkCycleData index cycleLength startOfCycleNode) <- hareAndTortoise doRockFall start toProfile
+  let [c1, c2] = take 2 $ iterate (applyN cycleLength doRockFall) startOfCycleNode
+  let cycleHeight = height c2 - height c1
+  let initialHeight = height startOfCycleNode
+  let (times, remainder) = (1000000000000 - index) `divMod` cycleLength
+  let remainingHeight = height (applyN remainder doRockFall c1) - initialHeight
+  pure $ initialHeight + (cycleHeight * times) + remainingHeight
+  where doRockFall = execState ffState
+
+--28 = start of cycle
+--63 = start of next cycle
+--cycle length = 35
+--cycle height = 53
+--height before start of cycle: 47?
+--init + two cycles = 49 + 53 + 53 = 155 (height)
+--numRocks for init + two cycles = 28+35+35 = 98
+
+height cs = cs ^. grid
+            & S.map (^. _y)
+            & minimum
+            & abs
+
+applyN :: Int -> (a -> a) -> a -> a
+applyN times f x = iterate f x !! times
 
 initState :: [Direction] -> CaveState
-initState directions = MkState initialRock initialGrid rockList actions 0
+initState directions = MkState initialRock initialGrid rockList directionList (length directions) 0
   where initialGrid = S.fromList $ map (`V2` 0) [0..6] --Add a floor
         initialRock = S.map (+ V2 2 (-4)) $ head rocks
-        actions = initActions directions
+        directionList = initActions directions
         rockList = tail $ cycle rocks
 
 --I can't just dumbly alternate between wind and drop actions because every time a rock is spawned
 --the first action needs to be wind
 initActions :: [Direction] -> [Direction]
 initActions = cycle
+
+--Step state until a new rock is spawned
+ffState :: State CaveState ()
+ffState = do
+  numRocks <- gets (^. rockCount)
+  stepState `untilM` gets ((/= numRocks) . (^. rockCount))
+  pure ()
 
 stepState :: State CaveState ()
 stepState = do
