@@ -84,7 +84,7 @@ normalise points = S.map (\v -> v - minimum points) points
 aoc17 :: IO ()
 aoc17 = do
   --printTestSolutions 17 $ MkAoCSolution parseInput part1
-  printTestSolutions 17 $ MkAoCSolution parseInput part2
+  printSolutions 17 $ MkAoCSolution parseInput part2
 
 parseInput :: Parser [Direction]
 parseInput = some parseDirection

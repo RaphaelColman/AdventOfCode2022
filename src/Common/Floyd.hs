@@ -5,6 +5,7 @@ import           Control.Lens     (makeLenses)
 import           Data.Foldable    (find)
 import           Data.List        (elemIndex)
 import           GHC.OldList      (findIndex)
+import Debug.Trace (traceM)
 
 data CycleData a
   = MkCycleData
