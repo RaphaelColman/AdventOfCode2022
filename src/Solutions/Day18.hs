@@ -7,9 +7,10 @@ import           Control.Lens.Getter     ((^.))
 import           Control.Monad.Loops     (concatM)
 import           Control.Monad.RWS       (MonadReader (ask))
 import           Control.Monad.Reader    (Reader, asks, runReader)
+import           Control.Monad.State
 import           Data.Finite             (Finite, finite)
 import           Data.Foldable           (find, maximumBy)
-import           Data.Function           (on)
+import           Data.Function           (on, (&))
 import           Data.Map.Lazy           (Map)
 import qualified Data.Map.Lazy           as M
 import           Data.Set                (Set)
@@ -23,21 +24,20 @@ import           Text.Parser.Token       (integer)
 import           Text.Printf             (printf)
 import           Text.Trifecta           (Parser, commaSep)
 
-data CountState
-  = MkCountState
-      { _insideFreeFace  :: !(Set Cube)
-      , _outsideFreeFace :: !(Set Cube)
-      }
-  deriving (Eq, Show)
-
 aoc18 :: IO ()
 aoc18 = do
   --printTestSolutions 18 $ MkAoCSolution parseInput part1
-  printTestSolutions 18 $ MkAoCSolution parseInput part2
+  printSolutions 18 $ MkAoCSolution parseInput part2
 
 type Cube = V3 Integer
 type Grid = Set Cube
 type Faces = Finite 7
+
+data CubeMap
+  = MkCubeMap
+      { _cubeMap    :: !(Map Cube Bool)
+      , _inProgress :: !(Set Cube)
+      }
 
 parseInput :: Parser (Set Cube)
 parseInput = do
@@ -47,12 +47,9 @@ parseInput = do
           pure $ V3 x y z
 
 --part1 :: Grid -> Integer
-part1 = solve
+part1 grid = sum $ map (toInteger . numFreeFaces grid) $ S.toList grid
 
-part2 grid = memo M.! V3 1 1 1
-  where memo = inflateK grid
-
-solve grid = sum $ map (toInteger . numFreeFaces grid) $ S.toList grid
+part2 = countOuterFreeFaces
 
 numFreeFaces :: Grid -> Cube -> Faces
 numFreeFaces grid cube = finite $ toInteger $ length $ freeFaces grid cube
@@ -68,25 +65,24 @@ neighbours point = S.fromList $ concatMap (\u -> [point + u, point - u]) units
 
 --For each cube: 1. get all free spaces around it
 --2. Figure out if space can reach the outside. If yes, count. if no, ignore
-countOuterFreeFaces :: Grid -> Integer
-countOuterFreeFaces grid = toInteger $ length outsideFreeFaces
-  where isOutsideFreeFace face = memo M.! face
-        memo = inflateK grid
-        allFreeFaces = S.unions $ S.map (freeFaces grid) grid
-        outsideFreeFaces = S.filter isOutsideFreeFace allFreeFaces
+--countOuterFreeFaces :: Grid -> Integer
+countOuterFreeFaces grid = length outsideFreeFaces
+  where allFreeFaces = concatMap (S.toList . freeFaces grid) grid
+        outsideFreeFaces = filter (canReachOutside grid) allFreeFaces
 
-inflateK :: Grid -> Map Cube Bool
-inflateK grid = memo
-  where memo = M.fromList $ map (\c -> (c, go c S.empty)) $ enumerateBounds grid
-        go :: Cube -> Set Cube -> Bool
-        go cube' seen = traceShow cube' $ M.findWithDefault (inflateOneLayer cube' seen) cube' memo
-        inflateOneLayer :: Cube -> Set Cube -> Bool
-        inflateOneLayer cube' seen
-            | any (outsideBounds grid) reduced = True --Can get to the outside
-            | null reduced = False --Couldn't expand any more
-            | otherwise = any (`go` S.insert cube' seen) reduced
-          where expanded = S.filter (not . overlaps grid) $ neighbours cube'
-                reduced = S.difference expanded seen
+canReachOutside :: Grid -> Cube -> State (Map Cube Bool) Bool
+canReachOutside grid cube = go (S.singleton cube) S.empty
+  where go :: Set Cube -> Set Cube -> State (Map Cube Bool) Bool
+        go cubes seen = do
+            mp <- get
+            let toSearch = S.difference cubes seen
+            let (found, notFound) = S.partition (`M.member` mp) toSearch
+            pure undefined
+            -- | any (outsideBounds grid) newCubes = True --Can get to the outside
+            -- | null newCubes = False --Couldn't expand any more
+            -- | otherwise = go newCubes (S.union seen newCubes)
+          where expanded = S.unions $ S.map (freeFaces grid) cubes
+                newCubes = S.difference expanded seen
 
 outsideBounds :: Grid -> Cube -> Bool
 outsideBounds grid (V3 x y z) = x > maxX || x < minX || y > maxY || y < minY || z > maxZ || z < minZ
@@ -95,15 +91,9 @@ outsideBounds grid (V3 x y z) = x > maxX || x < minX || y > maxY || y < minY || 
         [maxX, maxY, maxZ] = map maxDimension [(^. _x), (^. _y), (^. _z)]
         [minX, minY, minZ] = map minDimension [(^. _x), (^. _y), (^. _z)]
 
---refactor this!
---this does not actually enumerate all bounds yet. Not sure why
 enumerateBounds :: Grid -> [Cube]
-enumerateBounds grid = [V3 x y z | x <- [minX..maxX], y <- [minY, maxY], z <- [minZ, maxZ]]
+enumerateBounds grid = [V3 x y z | x <- [minX..maxX], y <- [minY..maxY], z <- [minZ..maxZ]]
   where maxDimension dimension = maximum $ S.map dimension grid
         minDimension dimension = minimum $ S.map dimension grid
         [maxX, maxY, maxZ] = map maxDimension [(^. _x), (^. _y), (^. _z)]
         [minX, minY, minZ] = map minDimension [(^. _x), (^. _y), (^. _z)]
-
---I can probably inline this
-overlaps :: Grid -> Cube -> Bool
-overlaps grid cube = cube `S.member` grid
