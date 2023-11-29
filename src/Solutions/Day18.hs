@@ -27,7 +27,8 @@ import           Text.Trifecta           (Parser, commaSep)
 aoc18 :: IO ()
 aoc18 = do
   --printTestSolutions 18 $ MkAoCSolution parseInput part1
-  printSolutions 18 $ MkAoCSolution parseInput part2
+  --printSolutions 18 $ MkAoCSolution parseInput part2
+  pure undefined
 
 type Cube = V3 Integer
 type Grid = Set Cube
@@ -66,9 +67,9 @@ neighbours point = S.fromList $ concatMap (\u -> [point + u, point - u]) units
 --For each cube: 1. get all free spaces around it
 --2. Figure out if space can reach the outside. If yes, count. if no, ignore
 --countOuterFreeFaces :: Grid -> Integer
-countOuterFreeFaces grid = length outsideFreeFaces
+countOuterFreeFaces grid = undefined
   where allFreeFaces = concatMap (S.toList . freeFaces grid) grid
-        outsideFreeFaces = filter (canReachOutside grid) allFreeFaces
+        outsideFreeFaces = filterM (canReachOutside grid) allFreeFaces
 
 canReachOutside :: Grid -> Cube -> State (Map Cube Bool) Bool
 canReachOutside grid cube = go (S.singleton cube) S.empty
